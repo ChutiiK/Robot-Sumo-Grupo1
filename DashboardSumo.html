@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<title>Robot Sumo Grupo 1</title>
+
+<style>
+:root{
+--marco:#244765; 
+--pantalla:#D9EAF2;
+--azul:#397F9B; 
+--rojo:#E58A73; 
+--verde:#57977C;
+--verde-claro:#DCEFE5; 
+--gris:#42596B;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+
+body{
+margin:0; 
+min-height:100vh; 
+padding:12px;
+display:flex; 
+align-items:center; 
+justify-content:center;
+font-family:"Segoe UI",system-ui,sans-serif;
+background:#C5D9E3;
+}
+.cuadro{
+width:100%; 
+max-width:380px; 
+padding:16px;
+background:var(--pantalla);
+border:10px solid var(--marco); 
+border-radius:36px;
+}
+
+.titulo{
+background:var(--azul); 
+color:#fff; 
+text-align:center;
+font-weight:700; 
+font-size:1.3rem; 
+padding:16px; 
+border-radius:12px;
+}
+
+.estado{
+width:70%; 
+margin:18px auto; 
+padding:8px; 
+text-align:center;
+border-radius:10px; 
+font-size:1.1rem;
+background:var(--verde-claro); 
+color:var(--verde);
+}
+
+.estado.off{
+    background:#f8d7d3; 
+    color:var(--rojo)
+}
+
+.control{
+display:grid; 
+gap:10px; 
+grid-template-columns:repeat(3,1fr);
+grid-template-areas:". up ." "left stop right" ". down .";
+}
+
+.control button{
+aspect-ratio:1; 
+border:none; 
+border-radius:16px;
+background:var(--azul); 
+color:#fff; 
+font-size:2rem;
+touch-action:none; 
+user-select:none; 
+-webkit-user-select:none;
+}
+
+.control button:active{
+    filter:brightness(1.3)
+}
+
+.up{
+    grid-area:up
+} 
+.down{
+    grid-area:down
+}
+.left{
+    grid-area:left
+} 
+.right{
+    grid-area:right
+}
+.stop{
+    grid-area:stop; 
+    background:var(--rojo)!important
+}
+
+.velocidad,.datos{
+    margin:20px 8px 0; 
+    color:var(--gris); 
+    font-size:1.1rem
+}
+
+.velocidad input{
+    width:100%; 
+    accent-color:var(--azul); 
+    margin-top:10px
+}
+
+#grafico{
+width:100%; 
+height:auto; 
+margin-top:10px;
+background:#fff; 
+border:1px solid #d5dde8; 
+border-radius:12px;
+}
+
+.titulo-grafico{margin:20px 8px 0; color:var(--gris); font-size:1rem; font-weight:600}
+.leyenda{display:flex; flex-direction:column; gap:2px; margin:6px 8px 0; font-size:.9rem}
+.leyenda .x{color:#c0392b} .leyenda .y{color:#2e8b57} .leyenda .z{color:#065a82}
+</style>
+</head>
+<body>
+<div class="cuadro">
+<div class="titulo">Robot Sumo Grupo 1</div>
+<div class="estado off" id="estado">● Desconectado</div>
+<div class="control">
+<button class="up"    data-cmd="W">▲</button>
+<button class="left"  data-cmd="A">◀</button>
+<button class="stop"  data-cmd="F">■</button>
+<button class="right" data-cmd="D">▶</button>
+<button class="down"  data-cmd="S">▼</button>
+</div>
+<div class="velocidad">
+Velocidad: <span id="valorVel">150</span>
+<input type="range" id="velocidad" min="0" max="255" value="150">
+</div>
+<div class="datos" id="datos">Inclinación: --</div>
+<div class="titulo-grafico">Aceleración por eje (g) en los últimos 30 s</div>
+<canvas id="grafico" width="320" height="180"></canvas>
+<div class="leyenda">
+<span class="x">● X: adelante / atrás</span>
+<span class="y">● Y: izquierda / derecha</span>
+<span class="z">● Z: arriba / abajo (en reposo ≈ 1 g)</span>
+</div>
+</div>
+<script>
+class Robot {
+enviar(cmd, vel) {
+return fetch(`/cmd?d=${cmd}&v=${vel}`).catch(() => {});
+}
+async datos() {
+try {
+const r = await fetch("/data");
+return r.ok ? await r.json() : null;
+} catch {
+return null;
+}
+}
+}
+class Grafico {
+constructor(canvas, maxPuntos = 60) {
+this.ctx = canvas.getContext("2d");
+this.w = canvas.width;
+this.h = canvas.height;
+this.max = maxPuntos;
+this.limite = 2;
+this.colores = ["#c0392b", "#2e8b57", "#065a82"];
+this.series = [[], [], []];
+}
+agregar(valores) {
+valores.forEach((v, i) => {
+this.series[i].push(v);
+if (this.series[i].length > this.max) this.series[i].shift();
+});
+this.dibujar();
+}
+dibujar() {
+const c = this.ctx;
+c.clearRect(0, 0, this.w, this.h);
+c.strokeStyle = "#cbd5e1";
+c.lineWidth = 1;
+c.beginPath();
+c.moveTo(0, this.h / 2);
+c.lineTo(this.w, this.h / 2);
+c.stroke();
+c.fillStyle = "#64748b";
+c.font = "10px sans-serif";
+c.fillText("+2 g", 4, 11);
+c.fillText("0", 4, this.h / 2 - 3);
+c.fillText("-2 g", 4, this.h - 4);
+this.series.forEach((s, i) => this.linea(s, this.colores[i]));
+}
+linea(datos, color) {
+const c = this.ctx;
+c.strokeStyle = color;
+c.lineWidth = 2;
+c.beginPath();
+datos.forEach((v, i) => {
+const g = Math.max(-this.limite, Math.min(this.limite, v));
+const x = i * this.w / (this.max - 1);
+const y = this.h / 2 - g * (this.h / 2) / this.limite;
+i ? c.lineTo(x, y) : c.moveTo(x, y);
+});
+c.stroke();
+}
+}
+class Dashboard {
+constructor(robot) {
+this.robot = robot;
+this.grafico = new Grafico(document.getElementById("grafico"));
+this.estado = document.getElementById("estado");
+this.datos = document.getElementById("datos");
+this.slider = document.getElementById("velocidad");
+this.valorVel = document.getElementById("valorVel");
+this.slider.addEventListener("input", () => {
+this.valorVel.textContent = this.slider.value;
+});
+document.querySelectorAll(".control button").forEach(b => this.enlazar(b));
+setInterval(() => this.actualizar(), 500);
+}
+enlazar(boton) {
+const cmd = boton.dataset.cmd;
+let timer = null;
+const enviar = () => this.robot.enviar(cmd, this.slider.value);
+const soltar = () => {
+if (!timer) return;
+clearInterval(timer);
+timer = null;
+this.robot.enviar("F", 0);
+};
+boton.addEventListener("pointerdown", e => {
+e.preventDefault();
+enviar();
+if (cmd !== "F") timer = setInterval(enviar, 150);
+});
+["pointerup", "pointerleave", "pointercancel"]
+.forEach(ev => boton.addEventListener(ev, soltar));
+}
+async actualizar() {
+const d = await this.robot.datos();
+this.estado.textContent = d ? "● Conectado" : "● Desconectado";
+this.estado.classList.toggle("off", !d);
+if (d && d.ok) {
+this.datos.textContent = `Pitch: ${d.pitch}° | Roll: ${d.roll}°`;
+this.grafico.agregar([d.x, d.y, d.z]);
+} else if (d) {
+this.datos.textContent = "Sensor MPU6050 no detectado";
+} else {
+this.datos.textContent = "Inclinación: --";
+}
+}
+}
+new Dashboard(new Robot());
+</script>
+</body>
+</html>
